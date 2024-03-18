@@ -1,9 +1,9 @@
 package com.kreitek.editor;
 
 import com.kreitek.editor.commands.CommandFactory;
+import com.kreitek.editor.commands.UndoCommand;
 
-import java.util.ArrayList;
-import java.util.Scanner;
+import java.util.*;
 
 public class ConsoleEditor implements Editor {
     public static final String TEXT_RESET = "\u001B[0m";
@@ -16,29 +16,46 @@ public class ConsoleEditor implements Editor {
     public static final String TEXT_CYAN = "\u001B[36m";
     public static final String TEXT_WHITE = "\u001B[37m";
 
-    private final CommandFactory commandFactory = new CommandFactory();
+    private CommandFactory commandFactory = new CommandFactory();
     private ArrayList<String> documentLines = new ArrayList<String>();
+    private CareTaker careTaker = new CareTaker();
 
-    @Override
+
+
     public void run() {
         boolean exit = false;
         while (!exit) {
             String commandLine = waitForNewCommand();
             try {
-                Command command = commandFactory.getCommand(commandLine);
-                command.execute(documentLines);
+                if (commandLine.equals("undo")) {
+                    Memento memento = careTaker.pop();
+                    if (memento != null) {
+                        restore(memento);
+                        Command undoCommand = new UndoCommand(careTaker);
+                        undoCommand.execute(documentLines);
+                    } else {
+                        printLnToConsole("No hay operaciones para deshacer.");
+                    }
+                } else {
+                    Command command = commandFactory.getCommand(commandLine);
+                    command.execute(documentLines);
+                    Memento state = getState();
+                    careTaker.push(state);
+
+                }
             } catch (BadCommandException e) {
                 printErrorToConsole("Bad command");
             } catch (ExitException e) {
                 exit = true;
             }
+
             showDocumentLines(documentLines);
             showHelp();
         }
     }
 
     private void showDocumentLines(ArrayList<String> textLines) {
-        if (textLines.size() > 0){
+        if (textLines.size() > 0) {
             setTextColor(TEXT_YELLOW);
             printLnToConsole("START DOCUMENT ==>");
             for (int index = 0; index < textLines.size(); index++) {
@@ -56,7 +73,7 @@ public class ConsoleEditor implements Editor {
 
     private String waitForNewCommand() {
         printToConsole("Enter a command : ");
-        Scanner scanner = new Scanner(System. in);
+        Scanner scanner = new Scanner(System.in);
         return scanner.nextLine();
     }
 
@@ -64,6 +81,7 @@ public class ConsoleEditor implements Editor {
         printLnToConsole("To add new line -> a \"your text\"");
         printLnToConsole("To update line  -> u [line number] \"your text\"");
         printLnToConsole("To delete line  -> d [line number]");
+        printLnToConsole("To undo last action -> undo");
     }
 
     private void printErrorToConsole(String message) {
@@ -84,4 +102,24 @@ public class ConsoleEditor implements Editor {
         System.out.print(message);
     }
 
+
+    public void restore(Memento memento) {
+        if (memento != null) {
+            Map<String, Object> state = memento.getState();
+            commandFactory = (CommandFactory) state.get("commandFactory");
+            documentLines = (ArrayList<String>) state.get("documentLines");
+
+        }
+    }
+
+    public Memento getState() {
+        Map<String, Object> state = new HashMap<>();
+        state.put("commandFactory", commandFactory);
+        state.put("documentLines", new ArrayList<>(documentLines));
+        return new Memento(state);
+    }
+
+
 }
+
+
